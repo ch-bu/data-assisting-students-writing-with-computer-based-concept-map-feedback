@@ -1,0 +1,90 @@
+---
+title: "Study2"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+library(skimr)
+library(knitr)
+```
+
+```{r, message=FALSE}
+wikipedia_raw <- read_csv("../data/study2/wikipedia_raw.csv")
+wikipedia_processed <- read_csv("../data/study2/wikipedia_processed.csv")
+complexity_data <- read_csv("../data/study2/complexity_data.csv")
+```
+
+## Corpus
+
+```{r}
+# How many articles?
+nrow(wikipedia_processed)
+```
+
+```{r}
+# How many words
+mean(wikipedia_processed$num_words)
+sd(wikipedia_processed$num_words)
+```
+
+```{r}
+# Word length
+mean(wikipedia_processed$WOR_WO_Fo_El_Len_syllablesPerToken)
+sd(wikipedia_processed$WOR_WO_Fo_El_Len_syllablesPerToken)
+```
+
+```{r}
+# Flesch kincaid
+mean(wikipedia_processed$Flesch_Kincaid)
+sd(wikipedia_processed$Flesch_Kincaid)
+```
+
+## Table 3
+
+```{r}
+wikipedia_processed %>%
+  select(SEN_GR_Fo_El_Des_WordsPerSentence,
+         WOR_WO_Fo_El_Len_syllablesPerToken,
+         num_words,
+         num_clusters, num_concepts, num_relations, 
+         lsa_local, lsa_global, 
+         TEX_TE_Me_El_Ref_localNounOverlapsPerSentence, 
+         globalNounOverlapsPerSentence, 
+         sumLongestDependenciesperSentence, 
+         SEN_CL_Fo_El_Phr_complexNominalsPerClause, 
+         WOR_WO_Me_El_Net_hypernymPerTypeFoundInGnet, 
+         WOR_WO_Fo_El_Div_rootTTR) %>% 
+  skim
+```
+
+## Table 4
+
+```{r}
+cor_matrix_data <- wikipedia_processed %>%
+  select(num_clusters, 
+        num_concepts,
+        num_relations,
+        
+        # Cohesion
+        lsa_local, 
+        lsa_global, 
+        TEX_TE_Me_El_Ref_localNounOverlapsPerSentence, 
+        globalNounOverlapsPerSentence,
+        
+        # Syntax
+        sumLongestDependenciesperSentence,
+        SEN_CL_Fo_El_Phr_complexNominalsPerClause,
+        
+        # Lexical
+        WOR_WO_Me_El_Net_hypernymPerTypeFoundInGnet,
+        WOR_WO_Fo_El_Div_rootTTR)
+
+
+kable(round(cor(cor_matrix_data), 2))
+```
+

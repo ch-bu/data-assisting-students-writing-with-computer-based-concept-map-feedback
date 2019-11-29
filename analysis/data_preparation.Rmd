@@ -1,0 +1,227 @@
+---
+title: "data_preparation"
+author: "Christian Burkhart"
+date: "20 Dezember 2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE)
+```
+
+# Data preparation
+
+```{r Load libraries}
+library(tidyverse)
+library(tm)
+library(openNLP)
+library(lsa)
+library(readability)
+library(igraph)
+```
+
+## Study 2 - Wikipedia data
+
+```{r Load wikipedia data, echo=FALSE, message=FALSE}
+wikipedia <- read_csv('../data/wikipedia-analyzed.csv')
+complexity_data <- read_csv('../data/complexity_data.csv')
+lsa_python <- read_csv('../data/lsa_python.csv')
+```
+
+### Calculate Coh-Metrix lsa data
+
+```{r Calculate lsa data from wikipedia data}
+# Extract sentences
+into_sentences <- function(string) {
+  s <- as.String(string)
+  a1 <- annotate(s, sent_token_annotator)
+  s[a1]
+}
+
+build_term_matrix <- function(sentence_vector) {
+  corpus <- Corpus(VectorSource(sentence_vector)) %>%
+    tm_map(tolower) %>%
+    tm_map(removePunctuation) %>%
+    tm_map(function(x) removeWords(x, stopwords("de"))) %>%
+    tm_map(stemDocument, language = "de")
+  
+  as.matrix(TermDocumentMatrix(corpus, control = list(weighting = function(x) weightTfIdf(x, normalize = FALSE))))
+}
+
+calc_local_cohesion <- function(cosine_matrix) {
+  denominator <- nrow(cosine_matrix) - 1
+  numerator <- 0
+  
+  for (i in 1:denominator) {
+    column <- i
+    row <- i + 1
+    
+    numerator <- numerator + cosine_matrix[row, column]
+  }
+  
+  numerator / denominator
+}
+
+calc_global_cohesion <- function(cosine_matrix) {
+  
+  denominator <- 0
+  numerator <- 0
+  
+  for (column in 1:(nrow(cosine_matrix) - 1)) {
+    for (row in (column + 1):nrow(cosine_matrix)) {
+      denominator <- denominator + 1
+      numerator <- numerator + cosine_matrix[row, column]
+    }
+  }
+  
+  numerator / denominator
+  
+}
+
+# Build Sentence tokenizer
+sent_token_annotator <- Maxent_Sent_Token_Annotator(language = "de")
+# https://stats.stackexchange.com/questions/108156/understanding-singular-value-decomposition-in-the-context-of-lsi
+# https://nlp.stanford.edu/IR-book/html/htmledition/latent-semantic-indexing-1.html
+
+# Build matrixes
+wikipedia <- wikipedia %>%
+  mutate(sentences           = summary %>% map(into_sentences),
+         term_matrix         = sentences %>% map(build_term_matrix),
+         lsa                 = term_matrix %>% map(~ lsa(., dimcalc_share(share = 0.5))),
+         textmatrix          = lsa %>% map(~ as.textmatrix(.)),
+         # svd                 = term_matrix %>% map(~ svd(.)),
+         cosine_matrix       = textmatrix %>% map(cosine),
+         cosine_matrix_no_na = cosine_matrix %>% map(~ replace(., is.nan(.), 0)),
+         dimensions          = textmatrix %>% map(nrow),
+         lsa_local           = unlist(cosine_matrix_no_na %>% map(calc_local_cohesion)),
+         lsa_global          = unlist(cosine_matrix_no_na %>% map(calc_global_cohesion)))
+
+# Write data to disk
+wikipedia <- wikipedia %>%
+  select(-summary, -sentences, -term_matrix, -textmatrix,
+         -cosine_matrix, -cosine_matrix_no_na, -dimensions, -lsa)
+```
+
+### Add raw texts to data frame
+
+```{r Load raw data}
+wikipedia_raw <- read_csv('../data/wikipedia_raw.csv')
+```
+
+```{r Add id variable to data}
+# Add id to data frame
+wikipedia_raw$id <- seq.int(nrow(wikipedia_raw))
+
+# Add id to existing data set
+wikipedia$id <- seq.int(nrow(wikipedia))
+
+# Merge data frames by title
+wikipedia_merged <- merge(wikipedia, wikipedia_raw, by = "id") %>%
+  select(-title.y, -url.y, -datetime.y) %>%
+  dplyr::rename(title = title.x, url = url.x, datetime = datetime.x)
+```
+
+### Add readability Flesch-Kincaid score to data
+
+```{r Calculate Flesch-Kincaid}
+# Calculate Flesh-Kincaid
+flesh_data <- readability::readability(wikipedia_merged$summary, wikipedia_merged$id)
+
+# Select Flesch_Kincaid readability score
+flesh_data <- flesh_data %>%
+  select(id, Flesch_Kincaid)
+
+# Merge with existing data frame
+wikipedia_merged <- merge(wikipedia_merged, flesh_data, by = "id")
+```
+
+
+### Calculate number of words
+
+```{r Calc number of words}
+str_split <- function(my_string) {
+  split <- strsplit(my_string, "\\s+")
+  
+  # Length of split
+  unlist(length(split[[1]])[[1]])
+}
+
+# Number of words
+wikipedia_merged <- wikipedia_merged %>%
+  mutate(
+    num_words = summary %>% map(~ str_split(.))
+  )
+
+# Flatten list of number of words
+wikipedia_merged$num_words <- unlist(wikipedia_merged$num_words)
+```
+
+### Add complexity data from weiß and meurers
+
+```{r Merge wikipedia data and complexity data}
+# Separate id from id string
+complexity_cleaned <- complexity_data %>%
+  separate(META_POS_file, c("id", "file_extension")) %>%
+  select(-file_extension)
+
+# Cast id variable to integer
+complexity_cleaned$id <- as.integer(complexity_cleaned$id)
+
+# Merge data
+wikipedia_merged <- merge(wikipedia_merged, complexity_cleaned, by = "id")
+```
+
+## Calculate average number of edges per node
+
+```{r Average number of edges per node}
+wikipedia_merged$average_edges <- (wikipedia_merged$num_relations * 2) / wikipedia_merged$num_concepts
+```
+
+## Rename variables
+
+```{r Rename variables}
+wikipedia_merged <- wikipedia_merged %>%
+  dplyr::rename(globalNounOverlapsPerSentence = TEX_TE_Me_El_Ref_globalNounOverlapsPerSentence,
+         globalArgOverlapsPerSentence = TEX_TE_Me_El_Ref_globalArgOverlapsPerSentence,
+         globalContentOverlapsPerSentence = TEX_TE_Me_El_Ref_globalContentOverlapsPerSentence,
+         sumLongestDependenciesPerFiniteClause = SEN_FC_Fo_El_Dep_sumLongestDependenciesPerFiniteClause,
+         sumLongestDependenciesperSentence = SEN_GR_Fo_El_Dep_sumLongestDependenciesPerSentence,
+         sumLongestDependenciesPerTUnit = SEN_TU_Fo_El_Dep_sumLongestDependenciesPerTUnit,
+         sumLongestDependenciesPerClause = SEN_CL_Fo_El_Dep_sumLongestDependenciesPerClause)
+```
+
+## Create z-scores
+
+```{r}
+wikipedia_merged <- wikipedia_merged %>%
+  mutate(
+    z_num_clusters                 = scale(num_clusters),
+    z_num_sentences                = scale(num_sentences),
+    z_lsa_global                   = scale(lsa_global),
+    z_globalNounOverlapPerSentence = scale(globalNounOverlapsPerSentence),
+    z_average_edges                = scale(average_edges),
+    z_Flesch_Kincaid               = scale(Flesch_Kincaid),
+    z_num_concepts                 = scale(num_concepts),
+    z_local_cohesion               = scale(local_cohesion),
+    z_num_words                    = scale(num_words)
+  )
+```
+
+### Add lsa data calculated with python
+
+```{r Add lsa python data}
+lsa_python$id <- seq(1:nrow(lsa_python))
+
+wikipedia_merged <- merge(wikipedia_merged, lsa_python, by = 'id')
+```
+
+### Write data to disc
+
+```{r Write data to disc}
+write_csv(wikipedia_merged, "../data/study2/wikipedia_processed.csv", append = FALSE)
+```
+
+
+
+
+

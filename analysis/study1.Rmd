@@ -1,0 +1,218 @@
+---
+title: "Study1"
+author: "Christian Burkhart"
+date: "27 Juni 2017"
+output:
+  pdf_document: default
+  word_document: default
+---
+
+# Study 1
+
+```{r Load packages, echo=FALSE, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(psych)
+library(ggplot2)
+library(lsa)
+library(tm)
+library(lsr)
+library(haven)
+library(Rmisc)
+library(effsize)
+library(skimr)
+library(heplots)
+library(readability)
+```
+
+```{r, message=FALSE}
+data_analyzed <- read_csv("../data/study1/data-analyzed.csv")
+
+readability_by_id <- as_tibble(readability(data_analyzed$text, 
+                                                grouping.var = data_analyzed$id))
+readability_by_subject <- as_tibble(readability(data_analyzed$text, 
+                                                grouping.var = data_analyzed$subject))
+
+cohviz <- read_csv('../data/study1/data-analyzed.csv')
+raw_data <- read_csv("../data/study1/raw-data.csv")
+
+# Merge data frames
+rater2 <- read_csv2('../data/study1/rater-data/rater2-100-analyzed.csv')
+rater2$local_cohesion <- as.numeric(rater2$local_cohesion)
+rater1 <- read_csv2('../data/study1/rater-data/rater1-100-analyzed.csv')
+rater1$local_cohesion <- as.numeric(rater1$local_cohesion)
+rater2$rater <- rep('rater2', nrow(rater2))
+rater1$rater <- rep('rater1', nrow(rater1))
+rater <- rbind(rater2, rater1)
+
+# 30 Texts
+rater3_30 <- read_csv2('../data/study1/rater-data/rater3_30.csv') %>% 
+  arrange(id)
+rater4_30 <- read_csv2('../data/study1/rater-data/rater4_30.csv') %>% 
+  arrange(id)
+rater3_30$rater <- rep("rater3", nrow(rater3_30))
+rater4_30$rater <- rep("rater4", nrow(rater4_30))
+rater_30 <- as_tibble(rbind(rater3_30, rater4_30))
+
+# Raw data from raters
+rater2_raw <- read_csv('../data/study1/rater-data/rater2-100.csv')
+rater1_raw <- read_csv('../data/study1/rater-data/rater1-100.csv')
+rater2_raw$rater <- rep('rater2', nrow(rater2_raw))
+rater1_raw$rater <- rep('rater1', nrow(rater1_raw))
+rater_raw <- as_tibble(rbind(rater2_raw, rater1_raw))
+
+# Get all 30 texts of raters
+ids <- c(4, 7, 10, 14, 15, 17, 21, 22, 23, 25, 27, 34, 36, 37,
+         42, 47, 54, 56, 60, 69, 71, 72, 77, 85, 89, 81, 92, 93, 95, 99)
+
+rater1_30 <- rater1 %>%
+  filter(id %in% ids) %>% 
+  select(id, number_clusters, number_relations, number_concepts, local_cohesion, number_sentences)
+
+rater2_30 <- rater2 %>%
+  filter(id %in% ids) %>%
+  select(id, number_clusters, number_relations, number_concepts, local_cohesion, number_sentences)
+
+rater3_30 <- rater3_30 %>%
+  filter(id %in% ids) 
+
+rater4_30 <- rater4_30 %>%
+  filter(id %in% ids)
+
+rater1_30$rater <- rep('rater1', nrow(rater1_30))
+rater2_30$rater <- rep('rater2', nrow(rater2_30))
+rater3_30$rater <- rep('rater3', nrow(rater3_30))
+rater4_30$rater <- rep('rater4', nrow(rater4_30))
+
+rater_30_data <- rbind(rater1_30, rater2_30, rater3_30, rater4_30) %>%
+  drop_na()
+```
+
+## Corpus
+
+```{r}
+# Number of words
+mean(cohviz$num_words)
+sd(cohviz$num_words)
+```
+
+```{r}
+# Number of sentence
+mean(cohviz$num_sentences)
+sd(cohviz$num_sentences)
+```
+
+```{r}
+# Readability Index
+readability_by_subject$Flesch_Kincaid %>% mean
+readability_by_subject$Flesch_Kincaid %>% sd
+```
+
+```{r}
+# ANOVA Number of words
+model_words <- aov(num_words ~ subject, data = data_analyzed) 
+
+model_words %>% 
+  summary
+
+etaSquared(model_words)
+```
+
+```{r}
+# ANOVA Number of sentences
+model_sentences <- aov(num_sentences ~ subject, data = data_analyzed) 
+
+model_sentences %>% summary
+
+etaSquared(model_sentences)
+```
+
+```{r}
+# ANOVA Readability
+model_flesch <- readability_by_id %>% 
+  left_join(data_analyzed %>% 
+              select(id, subject), by = c("id")) %>% 
+  aov(Flesch_Kincaid ~ subject, data = .)
+
+model_flesch %>% summary
+
+etaSquared(model_flesch)
+```
+
+## Interraterreliability
+
+30 Texts for all raters:
+
+```{r}
+# ICC 30 Texts
+ICC(cbind(rater1_30$number_clusters, rater2_30$number_clusters, 
+          rater3_30$number_clusters, rater4_30$number_clusters))$results$ICC[3]
+ICC(cbind(rater1_30$number_relations, rater2_30$number_relations, 
+          rater3_30$number_relations, rater4_30$number_relations))$results$ICC[3]
+ICC(cbind(rater1_30$number_concepts, rater2_30$number_concepts, 
+          rater3_30$number_concepts, rater4_30$number_concepts))$results$ICC[3]
+```
+
+Interraterreliability 2 raters all texts:
+
+```{r}
+ICC(cbind(rater1$number_clusters, rater2$number_clusters))$results$ICC[3]
+ICC(cbind(rater1$number_relations, rater2$number_relations))$results$ICC[3]
+ICC(cbind(rater1$number_concepts, rater2$number_concepts))$results$ICC[3]
+```
+
+
+## ICC and correlations between human expert raters and CohViz
+
+```{r}
+cor.test(rater1$number_cluster_discussed, cohviz$num_clusters)
+cor.test(rater1$number_relations_discussed, cohviz$num_relations)
+cor.test(rater1$number_concepts_discussed, cohviz$num_concepts)
+```
+
+```{r}
+ICC(cbind(rater1$number_cluster_discussed, cohviz$num_clusters))$results$ICC[3]
+ICC(cbind(rater2$number_relations_discussed, cohviz$num_relations))$results$ICC[3]
+ICC(cbind(rater1$number_concepts_discussed, cohviz$num_concepts))$results$ICC[3]
+```
+
+## Bias measures
+
+
+```{r Calculate accuracy and bias per cluster}
+rater_av_columns <- rater2 %>% select(id, number_cluster_discussed, number_relations_discussed,
+                                         number_concepts_discussed)
+
+merged_data <- merge(cohviz, rater_av_columns, by = "id") %>%
+  select(id, subject, num_relations, number_relations_discussed,
+         num_concepts, number_concepts_discussed,
+         num_clusters, number_cluster_discussed, num_sentences) %>%
+  mutate(
+    acc_absolute_cluster = abs(num_clusters - number_cluster_discussed)**2,
+    acc_absolute_relations = abs(num_relations - number_relations_discussed)**2,
+    acc_absolute_concepts = abs(num_concepts - number_concepts_discussed)**2,
+    bias_cluster = num_clusters - number_cluster_discussed,
+    bias_relations = num_relations - number_relations_discussed,
+    bias_concepts = num_concepts - number_concepts_discussed)
+
+```
+
+```{r}
+merged_data %>% 
+  select(num_relations:number_cluster_discussed) %>% 
+  skim
+```
+
+```{r}
+merged_data %>% 
+  select(bias_cluster:bias_concepts) %>% 
+  skim
+```
+
+
+```{r}
+t.test(merged_data$bias_cluster, alternative = c("two.sided"))
+t.test(merged_data$bias_relations, alternative = c("two.sided"))
+t.test(merged_data$bias_concepts, alternative = c("two.sided"))
+```
+
+
