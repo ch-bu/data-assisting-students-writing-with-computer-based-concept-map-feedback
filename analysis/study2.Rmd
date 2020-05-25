@@ -27,6 +27,13 @@ nrow(wikipedia_processed)
 ```
 
 ```{r}
+# How many sentences
+mean(complexity_data$TEX_TE_Form_El_Des_nSentences)
+sd(complexity_data$TEX_TE_Form_El_Des_nSentences)
+```
+
+
+```{r}
 # How many words
 mean(wikipedia_processed$num_words)
 sd(wikipedia_processed$num_words)
